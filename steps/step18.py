@@ -1,11 +1,30 @@
+# 미분 값이 필요 없는 계산(추론) 단계에서 불필요한 메모리(중간 단계 변수의 미분값, 함수의 input, output 관계) 삭제 
+import weakref
 import numpy as np
+import contextlib
+
+class Config:
+    enable_backprop = True
+
+@contextlib.contextmanager
+def using_config(name: str, value: bool):
+    old_value = getattr(Config, name)
+    setattr(Config, name, value)
+    try:
+        yield
+    finally:
+        setattr(Config, name, old_value)
+
+def no_grad():
+    return using_config('enable_backprop', False)
+
 
 class Variable:
     def __init__(self, data):
         if data is not None:
             if not isinstance(data, np.ndarray):
                 raise TypeError(f"{type(data)} is not supported")
-        
+            
         self.data = data
         self.grad = None
         self.creator = None
@@ -14,11 +33,11 @@ class Variable:
     def set_creator(self, func):
         self.creator = func
         self.generation = func.generation + 1
-
+    
     def cleargrad(self):
         self.grad = None
 
-    def backward(self):
+    def backward(self, retain_grad=False):
         if self.grad is None:
             self.grad = np.ones_like(self.data)
         
@@ -35,11 +54,11 @@ class Variable:
 
         while funcs:
             f = funcs.pop()
-            gys = [output.grad for output in f.outputs]
+            gys = [output().grad for output in f.outputs] # output은 약한 참조 => 값에 접근하기 위해 output() <- 소괄호 사용    
             gxs = f.backward(*gys)
             if not isinstance(gxs, tuple):
                 gxs = (gxs,)
-
+            
             for x, gx in zip(f.inputs, gxs):
                 if x.grad is None:
                     x.grad = gx
@@ -48,12 +67,10 @@ class Variable:
 
                 if x.creator is not None:
                     add_func(x.creator)
-
-def as_array(x):
-    if np.isscalar(x):
-        return np.array(x)
-    return x
-
+            
+            if not retain_grad:
+                for y in f.outputs:
+                    y().grad = None
 
 class Function:
     def __call__(self, *inputs):
@@ -63,11 +80,13 @@ class Function:
             ys = (ys,)
         outputs = [Variable(as_array(y)) for y in ys]
 
-        self.generation = max([x.generation for x in inputs])
-        for output in outputs:
-            output.set_creator(self)
-        self.inputs = inputs
-        self.outputs = outputs
+        if Config.enable_backprop:
+            self.generation = max([x.generation for x in inputs])
+            for output in outputs:
+                output.set_creator(self)
+            self.inputs = inputs
+            self.outputs = [weakref.ref(output) for output in outputs] # 기존 self.outputs = outputs
+        
         return outputs if len(outputs) > 1 else outputs[0]
 
     def forward(self, xs):
@@ -76,6 +95,11 @@ class Function:
     def backward(self, gys):
         raise NotImplementedError()
 
+
+def as_array(x):
+    if np.isscalar(x):
+        return np.array(x)
+    return x
 
 class Square(Function):
     def forward(self, x):
@@ -89,7 +113,6 @@ class Square(Function):
 
 def square(x):
     return Square()(x)
-
 
 class Add(Function):
     def forward(self, x0, x1):
@@ -105,10 +128,3 @@ def add(x0, x1):
 
 
 if __name__ == "__main__":
-    x = Variable(np.array(2.0))
-    a = square(x)
-    y = add(square(a), square(a))
-    y.backward()
-
-    print(y.data)
-    print(x.grad)

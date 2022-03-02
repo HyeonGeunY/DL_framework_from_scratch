@@ -1,11 +1,14 @@
+# 순환 참조 문제를 해결하기 위해 weakref 사용
+import weakref
 import numpy as np
+
 
 class Variable:
     def __init__(self, data):
         if data is not None:
             if not isinstance(data, np.ndarray):
                 raise TypeError(f"{type(data)} is not supported")
-        
+            
         self.data = data
         self.grad = None
         self.creator = None
@@ -14,7 +17,7 @@ class Variable:
     def set_creator(self, func):
         self.creator = func
         self.generation = func.generation + 1
-
+    
     def cleargrad(self):
         self.grad = None
 
@@ -35,11 +38,11 @@ class Variable:
 
         while funcs:
             f = funcs.pop()
-            gys = [output.grad for output in f.outputs]
+            gys = [output().grad for output in f.outputs] # output은 약한 참조 => 값에 접근하기 위해 output() <- 소괄호 사용    
             gxs = f.backward(*gys)
             if not isinstance(gxs, tuple):
                 gxs = (gxs,)
-
+            
             for x, gx in zip(f.inputs, gxs):
                 if x.grad is None:
                     x.grad = gx
@@ -48,12 +51,6 @@ class Variable:
 
                 if x.creator is not None:
                     add_func(x.creator)
-
-def as_array(x):
-    if np.isscalar(x):
-        return np.array(x)
-    return x
-
 
 class Function:
     def __call__(self, *inputs):
@@ -67,7 +64,7 @@ class Function:
         for output in outputs:
             output.set_creator(self)
         self.inputs = inputs
-        self.outputs = outputs
+        self.outputs = [weakref.ref(output) for output in outputs] # 기존 self.outputs = outputs
         return outputs if len(outputs) > 1 else outputs[0]
 
     def forward(self, xs):
@@ -76,6 +73,11 @@ class Function:
     def backward(self, gys):
         raise NotImplementedError()
 
+
+def as_array(x):
+    if np.isscalar(x):
+        return np.array(x)
+    return x
 
 class Square(Function):
     def forward(self, x):
@@ -91,24 +93,7 @@ def square(x):
     return Square()(x)
 
 
-class Add(Function):
-    def forward(self, x0, x1):
-        y = x0 + x1
-        return y
-
-    def backward(self, gy):
-        return gy, gy
-
-
-def add(x0, x1):
-    return Add()(x0, x1)
-
-
 if __name__ == "__main__":
-    x = Variable(np.array(2.0))
-    a = square(x)
-    y = add(square(a), square(a))
-    y.backward()
-
-    print(y.data)
-    print(x.grad)
+    for i in range(10):
+        x = Variable(np.random.randn(10000))
+        y = square(square(square(x)))        
