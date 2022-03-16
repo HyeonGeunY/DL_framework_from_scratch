@@ -11,7 +11,7 @@ def rosenbrock(x0, x1):
     return y
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     x0 = Variable(np.array(0.0))
     x1 = Variable(np.array(2.0))
     lr = 0.001
