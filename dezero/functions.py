@@ -42,7 +42,7 @@ class Tanh(Function):
         return y
 
     def backward(self, gy):
-        y = self.outputs[0]()
+        y = self.outputs[0]() # weakref
         gx = gy * (1 - y * y)
         return gx
 
@@ -83,4 +83,18 @@ def log(x):
     return Log()(x)
 
 
+# =======================
+# sum
+# =======================
+class Sum(Function):
+    def __init__(self, axis, keepdims):
+        self.axis = axis
+        self.keepdims = keepdims
 
+    def forward(self, x):
+        self.x_shape = x.shape
+        y = x.sum(axis=self.axis, keepdims=self.keepdims)
+        return y
+    
+    def backward(self, gy):
+        gy = utils.reshape_sum_backward()

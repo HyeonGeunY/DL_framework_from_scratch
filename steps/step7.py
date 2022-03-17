@@ -1,5 +1,3 @@
-from tkinter import Y
-from xml.sax.handler import feature_external_ges
 import numpy as np
 
 class Variable:

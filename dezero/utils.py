@@ -75,6 +75,39 @@ def plot_dot_graph(output, verbose=True, to_file='graph.png'):
         pass
 
 
+def reshape_sum_backward(gy, x_shape, axis, keepdims):
+    """dezero.functions.sum 의 역전파 계산을 위한 reshape
+
+    Args:
+        gy (dezero.Variable): 아웃풋의 역전파 값
+        x_shape (tuple): 합을 수행하기 전 x의 shape
+        axis (None or int or tuple of ints): sum을 수행한 axis
+        keepdims (bool): np.sum을 수행할때 keepdims 여부
+
+    Returns:
+        dezero.Variable: reshape된 Gradient variable
+    """
+
+    ndim = len(x_shape)
+    tupled_axis = axis
+    if axis is None:
+        tupled_axis = None
+    elif not isinstance(axis, tuple):
+        tupled_axis = (axis,)
+    
+    if not (ndim == 0 or tupled_axis is None or keepdims):
+        actual_axis = [a if a >= 0 else a + ndim for a in tupled_axis] # -로 axis를 입력했을 때
+        shape = list(gy.shape)
+        for a in sorted(actual_axis):
+            shape.insert(a, 1)
+    else:
+        shape = gy.shape # tupled_axis = None 일경우 broadcast
+    
+    gy = gy.reshape(shape)
+    return gy
+    
+
+
      
         
     
